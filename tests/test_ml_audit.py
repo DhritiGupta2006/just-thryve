@@ -193,7 +193,7 @@ class TestMLServiceFeatureEngineering:
         # compliance is feature index 5
         assert vec[5] == COMPLIANCE_MAP["non_compliant"]
 
-    def test_emi_ratio_zero_revenue_is_one(self):
+    def test_emi_ratio_defaults_to_one_when_revenue_is_zero(self):
         features = {
             "gst_revenue_3m_avg": 0,
             "gst_revenue_growth_rate": 0,
