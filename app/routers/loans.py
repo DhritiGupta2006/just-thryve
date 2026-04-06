@@ -1,8 +1,8 @@
 import logging
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -68,6 +68,23 @@ def apply_loan(
     db.commit()
     db.refresh(loan)
     return {"loan_id": str(loan.id), "status": loan.status}
+
+
+@router.get("", response_model=List[LoanResponse])
+def list_loans(
+    loan_status: Optional[str] = Query(None, alias="status", description="Filter by loan status"),
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    query = db.query(Loan)
+    if current_user.role == "borrower":
+        query = query.filter(Loan.borrower_id == current_user.id)
+    if loan_status:
+        query = query.filter(Loan.status == loan_status)
+    loans = query.order_by(Loan.created_at.desc()).offset(offset).limit(limit).all()
+    return [_loan_to_response(loan) for loan in loans]
 
 
 @router.post("/{loan_id}/submit", response_model=dict)

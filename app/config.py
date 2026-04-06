@@ -1,3 +1,4 @@
+from typing import Optional
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 
@@ -11,6 +12,7 @@ class Settings(BaseSettings):
     environment: str = "development"
     log_level: str = "INFO"
     model_path: str = "app/ml/model.pkl"
+    frontend_url: Optional[str] = None
 
     model_config = {"env_file": ".env", "protected_namespaces": ("settings_",)}
 
