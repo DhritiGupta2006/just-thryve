@@ -222,3 +222,126 @@ class TestHealthCheck:
         response = client.get("/health")
         assert response.status_code == 200
         assert response.json()["status"] == "ok"
+
+
+# ---------------------------------------------------------------------------
+# POST /loans/{loan_id}/accept-offer/{offer_id}
+# ---------------------------------------------------------------------------
+
+class TestAcceptOffer:
+    def test_borrower_can_accept_offer(self, borrower_client, mock_db, borrower):
+        loan = _make_loan(status="offers_received", borrower_id=borrower.id)
+        offer = _make_offer(loan.id, uuid.uuid4(), status="pending")
+
+        # First query → loan; second → offer
+        mock_db.query.return_value.filter.return_value.first.side_effect = [loan, offer]
+        # Bulk update query (reject other offers)
+        mock_db.query.return_value.filter.return_value.update.return_value = 0
+
+        response = borrower_client.post(f"/loans/{loan.id}/accept-offer/{offer.id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["loan_id"] == str(loan.id)
+        assert data["status"] == "accepted"
+        assert "offer_id" in data
+
+    def test_accept_offer_loan_not_found_returns_404(self, borrower_client, mock_db, borrower):
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+        response = borrower_client.post(f"/loans/{uuid.uuid4()}/accept-offer/{uuid.uuid4()}")
+        assert response.status_code == 404
+
+    def test_accept_offer_wrong_status_returns_400(self, borrower_client, mock_db, borrower):
+        loan = _make_loan(status="submitted", borrower_id=borrower.id)
+        mock_db.query.return_value.filter.return_value.first.return_value = loan
+
+        response = borrower_client.post(f"/loans/{loan.id}/accept-offer/{uuid.uuid4()}")
+        assert response.status_code == 400
+
+    def test_accept_offer_not_found_returns_404(self, borrower_client, mock_db, borrower):
+        loan = _make_loan(status="offers_received", borrower_id=borrower.id)
+        # Loan found, offer not found
+        mock_db.query.return_value.filter.return_value.first.side_effect = [loan, None]
+        mock_db.query.return_value.filter.return_value.update.return_value = 0
+
+        response = borrower_client.post(f"/loans/{loan.id}/accept-offer/{uuid.uuid4()}")
+        assert response.status_code == 404
+
+    def test_lender_cannot_accept_offer(self, lender_client, mock_db):
+        response = lender_client.post(f"/loans/{uuid.uuid4()}/accept-offer/{uuid.uuid4()}")
+        assert response.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# POST /loans/{loan_id}/disburse
+# ---------------------------------------------------------------------------
+
+class TestDisburseLoan:
+    def test_disburse_accepted_loan(self, borrower_client, mock_db, borrower):
+        loan = _make_loan(
+            status="accepted",
+            borrower_id=borrower.id,
+            approved_amount=Decimal("500000.00"),
+            approved_rate=Decimal("12.0000"),
+            emi_amount=Decimal("44424.40"),
+        )
+        mock_db.query.return_value.filter.return_value.first.return_value = loan
+
+        response = borrower_client.post(f"/loans/{loan.id}/disburse")
+        assert response.status_code == 200
+        data = response.json()
+        assert "disbursement_id" in data
+        assert "reference_id" in data
+        assert data["status"] == "initiated"
+
+    def test_disburse_non_accepted_loan_returns_400(self, borrower_client, mock_db, borrower):
+        loan = _make_loan(status="submitted", borrower_id=borrower.id)
+        mock_db.query.return_value.filter.return_value.first.return_value = loan
+
+        response = borrower_client.post(f"/loans/{loan.id}/disburse")
+        assert response.status_code == 400
+
+    def test_disburse_nonexistent_loan_returns_404(self, borrower_client, mock_db):
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+
+        response = borrower_client.post(f"/loans/{uuid.uuid4()}/disburse")
+        assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# GET /offers  (list offers for a loan)
+# ---------------------------------------------------------------------------
+
+class TestListOffers:
+    def test_borrower_can_list_own_loan_offers(self, borrower_client, mock_db, borrower):
+        loan = _make_loan(status="offers_received", borrower_id=borrower.id)
+        offers = [_make_offer(loan.id, uuid.uuid4()) for _ in range(2)]
+
+        mock_db.query.return_value.filter.return_value.first.return_value = loan
+        mock_db.query.return_value.filter.return_value.all.return_value = offers
+
+        response = borrower_client.get(f"/offers?loan_id={loan.id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 2
+        assert "interest_rate" in data[0]
+
+    def test_borrower_cannot_list_other_loan_offers(self, borrower_client, mock_db):
+        loan = _make_loan(status="offers_received")  # different borrower_id
+        mock_db.query.return_value.filter.return_value.first.return_value = loan
+
+        response = borrower_client.get(f"/offers?loan_id={loan.id}")
+        assert response.status_code == 403
+
+    def test_list_offers_nonexistent_loan_returns_404(self, borrower_client, mock_db):
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+        response = borrower_client.get(f"/offers?loan_id={uuid.uuid4()}")
+        assert response.status_code == 404
+
+    def test_lender_can_list_any_loan_offers(self, lender_client, mock_db):
+        loan = _make_loan(status="offers_received")
+        offers = [_make_offer(loan.id, uuid.uuid4())]
+        mock_db.query.return_value.filter.return_value.first.return_value = loan
+        mock_db.query.return_value.filter.return_value.all.return_value = offers
+
+        response = lender_client.get(f"/offers?loan_id={loan.id}")
+        assert response.status_code == 200

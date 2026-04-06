@@ -43,12 +43,14 @@ def grant_consent(
         # Auto-simulate grant for mock flow
         artefact = AAService.simulate_grant(consent_type)
 
+        now = datetime.utcnow()
         consent = Consent(
             user_id=current_user.id,
             consent_type=consent_type,
             status="granted",
-            granted_at=datetime.utcnow(),
+            granted_at=now,
             metadata_=artefact,
+            created_at=now,
         )
         db.add(consent)
         db.flush()
