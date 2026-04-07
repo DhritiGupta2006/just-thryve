@@ -92,3 +92,37 @@ def get_consent_status(
         revoked_at=consent.revoked_at,
         created_at=consent.created_at,
     )
+
+
+@router.post("/{consent_id}/revoke", response_model=ConsentResponse)
+def revoke_consent(
+    consent_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Revoke a previously granted consent. Only the user who granted the consent
+    may revoke it. Consents that are already revoked cannot be revoked again.
+    """
+    consent = db.query(Consent).filter(Consent.id == consent_id, Consent.user_id == current_user.id).first()
+    if not consent:
+        raise HTTPException(status_code=404, detail="Consent not found")
+    if consent.status == "revoked":
+        raise HTTPException(status_code=400, detail="Consent is already revoked")
+
+    now = datetime.utcnow()
+    consent.status = "revoked"
+    consent.revoked_at = now
+    db.commit()
+
+    return ConsentResponse(
+        consent_id=str(consent.id),
+        user_id=str(consent.user_id),
+        consent_type=consent.consent_type,
+        status=consent.status,
+        artefact=consent.metadata_,
+        granted_at=consent.granted_at,
+        revoked_at=consent.revoked_at,
+        created_at=consent.created_at,
+    )
+

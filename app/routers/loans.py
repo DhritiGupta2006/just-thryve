@@ -1,21 +1,27 @@
 import logging
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.loan import Loan
+from app.models.offer import Offer
+from app.models.transaction import Transaction
 from app.models.user import User
 from app.models.business_profile import BusinessProfile
 from app.models.ml_audit_log import MLAuditLog
 from app.models.repayment_schedule import RepaymentSchedule
 from app.schemas.loan import LoanApplyRequest, LoanResponse
 from app.schemas.offer import OfferResponse
+from app.schemas.transaction import TransactionResponse
 from app.services.auth_service import get_current_user, require_role
 from app.services.ml_service import MLService
 from app.services.emi_service import EMIService
+from app.services.risk_explanation_service import RiskExplanationService
+from app.services.loan_comparison_service import LoanComparisonService
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -190,60 +196,22 @@ def get_loan_offers(
     ]
 
 
-@router.patch("/{loan_id}/offers/{offer_id}/accept", response_model=dict)
-def accept_offer_patch(
+def _accept_offer(
     loan_id: str,
     offer_id: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("borrower")),
-):
-    """Accept a specific offer for a loan (PATCH variant)."""
-    from app.models.offer import Offer
-
+    db: Session,
+    current_user: User,
+) -> dict:
+    """Shared logic for accepting an offer — used by both PATCH and POST variants."""
     loan = db.query(Loan).filter(Loan.id == loan_id, Loan.borrower_id == current_user.id).first()
     if not loan:
         raise HTTPException(status_code=404, detail="Loan not found")
     if loan.status != "offers_received":
         raise HTTPException(status_code=400, detail="No offers available to accept")
 
-    offer = db.query(Offer).filter(Offer.id == offer_id, Offer.loan_id == loan_id, Offer.status == "pending").first()
-    if not offer:
-        raise HTTPException(status_code=404, detail="Offer not found or already processed")
-
-    db.query(Offer).filter(Offer.loan_id == loan_id, Offer.id != offer_id).update({"status": "rejected"})
-
-    offer.status = "accepted"
-    offer.accepted_at = datetime.utcnow()
-    loan.status = "accepted"
-    loan.approved_amount = offer.offered_amount
-    loan.approved_rate = offer.interest_rate
-    loan.emi_amount = offer.emi_amount
-
-    db.commit()
-    return {
-        "loan_id": str(loan.id),
-        "status": loan.status,
-        "disbursement_scheduled": True,
-        "offer_id": str(offer.id),
-    }
-
-
-@router.post("/{loan_id}/accept-offer/{offer_id}", response_model=dict)
-def accept_offer(
-    loan_id: str,
-    offer_id: str,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("borrower")),
-):
-    from app.models.offer import Offer
-
-    loan = db.query(Loan).filter(Loan.id == loan_id, Loan.borrower_id == current_user.id).first()
-    if not loan:
-        raise HTTPException(status_code=404, detail="Loan not found")
-    if loan.status != "offers_received":
-        raise HTTPException(status_code=400, detail="No offers available to accept")
-
-    offer = db.query(Offer).filter(Offer.id == offer_id, Offer.loan_id == loan_id, Offer.status == "pending").first()
+    offer = db.query(Offer).filter(
+        Offer.id == offer_id, Offer.loan_id == loan_id, Offer.status == "pending"
+    ).first()
     if not offer:
         raise HTTPException(status_code=404, detail="Offer not found or already processed")
 
@@ -266,6 +234,28 @@ def accept_offer(
     }
 
 
+@router.patch("/{loan_id}/offers/{offer_id}/accept", response_model=dict)
+def accept_offer_patch(
+    loan_id: str,
+    offer_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("borrower")),
+):
+    """Accept a specific offer for a loan (PATCH variant)."""
+    return _accept_offer(loan_id, offer_id, db, current_user)
+
+
+@router.post("/{loan_id}/accept-offer/{offer_id}", response_model=dict)
+def accept_offer(
+    loan_id: str,
+    offer_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("borrower")),
+):
+    """Accept a specific offer for a loan (POST variant)."""
+    return _accept_offer(loan_id, offer_id, db, current_user)
+
+
 @router.post("/{loan_id}/disburse", response_model=dict)
 def disburse_loan(
     loan_id: str,
@@ -273,7 +263,6 @@ def disburse_loan(
     current_user: User = Depends(get_current_user),
 ):
     import uuid as _uuid
-    from app.models.transaction import Transaction
 
     loan = db.query(Loan).filter(Loan.id == loan_id).first()
     if not loan:
@@ -326,3 +315,152 @@ def _generate_repayment_schedule(loan: Loan, db: Session):
             status="pending",
         )
         db.add(rs)
+
+
+@router.get("/{loan_id}/risk-explanation", response_model=dict)
+def get_risk_explanation(
+    loan_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Return a human-readable explanation of the ML underwriting decision for a loan.
+    Borrowers may only access their own loans.
+    """
+    loan = db.query(Loan).filter(Loan.id == loan_id).first()
+    if not loan:
+        raise HTTPException(status_code=404, detail="Loan not found")
+    if current_user.role == "borrower" and str(loan.borrower_id) != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    audit = (
+        db.query(MLAuditLog)
+        .filter(MLAuditLog.loan_id == loan_id)
+        .order_by(MLAuditLog.created_at.desc())
+        .first()
+    )
+
+    return RiskExplanationService.explain(
+        decision=loan.ml_decision or "pending",
+        risk_score=loan.risk_score or 0,
+        shap_values=audit.shap_values if audit else None,
+        input_features=audit.input_features if audit else None,
+    )
+
+
+@router.get("/{loan_id}/comparisons", response_model=dict)
+def get_loan_comparisons(
+    loan_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Return a side-by-side comparison of all offers for a loan with a recommendation.
+    Borrowers may only compare offers for their own loans.
+    """
+    loan = db.query(Loan).filter(Loan.id == loan_id).first()
+    if not loan:
+        raise HTTPException(status_code=404, detail="Loan not found")
+    if current_user.role == "borrower" and str(loan.borrower_id) != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    offers = db.query(Offer).filter(Offer.loan_id == loan_id).all()
+    offer_dicts = [
+        {
+            "offer_id": str(o.id),
+            "lender_id": str(o.lender_id),
+            "offered_amount": float(o.offered_amount),
+            "interest_rate": float(o.interest_rate),
+            "tenure_months": o.tenure_months,
+            "emi_amount": float(o.emi_amount),
+            "status": o.status,
+        }
+        for o in offers
+    ]
+    return LoanComparisonService.compare_offers(offer_dicts)
+
+
+class EarlyRepaymentRequest(BaseModel):
+    prepayment_amount: float
+    prepayment_penalty_percent: float = 2.0
+
+
+@router.post("/{loan_id}/early-repayment", response_model=dict)
+def early_repayment_estimate(
+    loan_id: str,
+    payload: EarlyRepaymentRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("borrower")),
+):
+    """
+    Estimate the impact of a partial or full early repayment for an active loan.
+    Only the borrower who owns the loan may call this endpoint.
+    """
+    loan = db.query(Loan).filter(Loan.id == loan_id, Loan.borrower_id == current_user.id).first()
+    if not loan:
+        raise HTTPException(status_code=404, detail="Loan not found")
+    if loan.status not in ("disbursed", "active"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Early repayment estimate is only available for active loans (current: {loan.status})",
+        )
+
+    # Calculate outstanding principal from pending repayment schedule items
+    pending_items = (
+        db.query(RepaymentSchedule)
+        .filter(RepaymentSchedule.loan_id == loan_id, RepaymentSchedule.status == "pending")
+        .order_by(RepaymentSchedule.installment_number)
+        .all()
+    )
+
+    if not pending_items:
+        raise HTTPException(status_code=400, detail="No pending installments found for this loan")
+
+    outstanding_principal = float(sum(s.principal_amount for s in pending_items))
+    remaining_months = len(pending_items)
+    annual_rate = float(loan.approved_rate or 0)
+
+    return LoanComparisonService.early_repayment_summary(
+        outstanding_principal=outstanding_principal,
+        annual_rate_percent=annual_rate,
+        remaining_months=remaining_months,
+        prepayment_amount=payload.prepayment_amount,
+        prepayment_penalty_percent=payload.prepayment_penalty_percent,
+    )
+
+
+@router.get("/{loan_id}/transactions", response_model=List[TransactionResponse])
+def list_loan_transactions(
+    loan_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Return all transactions (disbursement + EMI payments) for a loan.
+    Borrowers may only access transactions for their own loans.
+    """
+    loan = db.query(Loan).filter(Loan.id == loan_id).first()
+    if not loan:
+        raise HTTPException(status_code=404, detail="Loan not found")
+    if current_user.role == "borrower" and str(loan.borrower_id) != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    transactions = (
+        db.query(Transaction)
+        .filter(Transaction.loan_id == loan_id)
+        .order_by(Transaction.created_at.desc())
+        .all()
+    )
+    return [
+        TransactionResponse(
+            id=str(t.id),
+            loan_id=str(t.loan_id),
+            type=t.type,
+            amount=t.amount,
+            status=t.status,
+            reference_id=t.reference_id,
+            metadata=t.metadata_,
+            created_at=t.created_at,
+        )
+        for t in transactions
+    ]

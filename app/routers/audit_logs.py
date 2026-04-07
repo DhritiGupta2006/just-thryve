@@ -1,33 +1,16 @@
-from typing import Any, Dict, List, Optional
-from datetime import datetime
-from decimal import Decimal
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.loan import Loan
 from app.models.ml_audit_log import MLAuditLog
 from app.models.user import User
+from app.schemas.audit_log import AuditLogResponse
 from app.services.auth_service import get_current_user
 
 router = APIRouter(prefix="/audit-logs", tags=["audit-logs"])
-
-
-class AuditLogResponse(BaseModel):
-    id: str
-    loan_id: str
-    model_version: str
-    input_features: Dict[str, Any]
-    prediction_score: Decimal
-    shap_values: Optional[Dict[str, Any]] = None
-    decision: str
-    confidence: Optional[Decimal] = None
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 def _to_response(log: MLAuditLog) -> AuditLogResponse:

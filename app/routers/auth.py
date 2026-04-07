@@ -108,3 +108,32 @@ def update_profile(
         kyc_verified=current_user.kyc_verified,
         created_at=current_user.created_at,
     )
+
+
+@router.post("/kyc/verify", response_model=UserResponse)
+def verify_kyc(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Mark the current user's KYC as verified.
+
+    In production this would integrate with a KYC provider (e.g. DigiLocker/Aadhaar).
+    Here it simulates a successful KYC verification for the authenticated user.
+    """
+    if current_user.kyc_verified:
+        raise HTTPException(status_code=400, detail="KYC is already verified")
+
+    current_user.kyc_verified = True
+    db.commit()
+    db.refresh(current_user)
+
+    return UserResponse(
+        user_id=str(current_user.id),
+        email=current_user.email,
+        name=current_user.name,
+        role=current_user.role,
+        kyc_verified=current_user.kyc_verified,
+        created_at=current_user.created_at,
+    )
+
