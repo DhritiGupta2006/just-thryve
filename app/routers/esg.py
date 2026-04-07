@@ -1,12 +1,12 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.business_profile import BusinessProfile
 from app.models.user import User
+from app.schemas.esg import ESGMetricsResponse, ESGMetricsUpdate
 from app.services.auth_service import require_role
 
 router = APIRouter(prefix="/esg", tags=["esg"])
@@ -17,24 +17,6 @@ _COMPLIANCE_SCORE: dict[str, int] = {
     "pending": 60,
     "non_compliant": 20,
 }
-
-
-class ESGMetricsResponse(BaseModel):
-    renewable_energy_percent: float
-    carbon_intensity: float
-    compliance_score: int
-    waste_recycled_percent: float
-    social_impact_score: float
-
-    class Config:
-        from_attributes = True
-
-
-class ESGMetricsUpdate(BaseModel):
-    renewable_energy_percent: Optional[float] = Field(None, ge=0, le=100)
-    carbon_intensity: Optional[float] = Field(None, ge=0)
-    waste_recycled_percent: Optional[float] = Field(None, ge=0, le=100)
-    social_impact_score: Optional[float] = Field(None, ge=0, le=100)
 
 
 @router.get("/metrics", response_model=ESGMetricsResponse)

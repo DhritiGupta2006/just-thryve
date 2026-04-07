@@ -16,6 +16,7 @@ from app.routers.audit_logs import router as audit_logs_router
 from app.routers.esg import router as esg_router
 from app.routers.dashboard import router as dashboard_router
 from app.routers.notifications import router as notifications_router
+from app.routers.ocen import router as ocen_router
 
 settings = get_settings()
 
@@ -81,6 +82,7 @@ app.include_router(audit_logs_router)
 app.include_router(esg_router)
 app.include_router(dashboard_router)
 app.include_router(notifications_router)
+app.include_router(ocen_router)
 
 
 @app.get("/", tags=["health"])

@@ -9,7 +9,6 @@ from datetime import date, datetime, timedelta
 from typing import List
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -17,17 +16,10 @@ from app.models.loan import Loan
 from app.models.offer import Offer
 from app.models.repayment_schedule import RepaymentSchedule
 from app.models.user import User
+from app.schemas.notifications import NotificationResponse
 from app.services.auth_service import get_current_user
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
-
-
-class NotificationResponse(BaseModel):
-    id: str
-    title: str
-    description: str
-    category: str
-    created_at: str
 
 
 def _iso(dt) -> str:
