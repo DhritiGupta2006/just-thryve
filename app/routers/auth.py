@@ -4,8 +4,8 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.user import User
 from app.models.business_profile import BusinessProfile
-from app.schemas.auth import SignupRequest, LoginRequest, TokenResponse
-from app.services.auth_service import AuthService
+from app.schemas.auth import SignupRequest, LoginRequest, TokenResponse, UserResponse, ProfileUpdateRequest
+from app.services.auth_service import AuthService, get_current_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -57,3 +57,54 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
 
     token = AuthService.create_access_token({"sub": str(user.id), "role": user.role})
     return TokenResponse(user_id=str(user.id), token=token, role=user.role)
+
+
+@router.get("/me", response_model=UserResponse)
+def get_me(current_user: User = Depends(get_current_user)):
+    return UserResponse(
+        user_id=str(current_user.id),
+        email=current_user.email,
+        name=current_user.name,
+        role=current_user.role,
+        kyc_verified=current_user.kyc_verified,
+        created_at=current_user.created_at,
+    )
+
+
+@router.put("/profile", response_model=UserResponse)
+def update_profile(
+    payload: ProfileUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if payload.name is not None:
+        current_user.name = payload.name
+
+    if payload.business_name is not None or payload.sector is not None:
+        profile = (
+            db.query(BusinessProfile)
+            .filter(BusinessProfile.user_id == current_user.id)
+            .first()
+        )
+        if profile:
+            if payload.business_name is not None:
+                profile.business_name = payload.business_name
+            if payload.sector is not None:
+                if payload.sector not in VALID_SECTORS:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"sector must be one of {VALID_SECTORS}",
+                    )
+                profile.sector = payload.sector
+
+    db.commit()
+    db.refresh(current_user)
+
+    return UserResponse(
+        user_id=str(current_user.id),
+        email=current_user.email,
+        name=current_user.name,
+        role=current_user.role,
+        kyc_verified=current_user.kyc_verified,
+        created_at=current_user.created_at,
+    )

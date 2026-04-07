@@ -12,6 +12,10 @@ from app.routers.loans import router as loans_router
 from app.routers.consent import router as consent_router
 from app.routers.offers import router as offers_router
 from app.routers.repayment import router as repayment_router
+from app.routers.audit_logs import router as audit_logs_router
+from app.routers.esg import router as esg_router
+from app.routers.dashboard import router as dashboard_router
+from app.routers.notifications import router as notifications_router
 
 settings = get_settings()
 
@@ -38,7 +42,11 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"] if settings.environment == "development" else [],
+    allow_origins=(
+        ["http://localhost:5173", "http://localhost:3000"]
+        if settings.environment == "development"
+        else ([settings.frontend_url] if settings.frontend_url else [])
+    ),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -69,6 +77,10 @@ app.include_router(loans_router)
 app.include_router(consent_router)
 app.include_router(offers_router)
 app.include_router(repayment_router)
+app.include_router(audit_logs_router)
+app.include_router(esg_router)
+app.include_router(dashboard_router)
+app.include_router(notifications_router)
 
 
 @app.get("/", tags=["health"])

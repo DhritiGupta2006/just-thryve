@@ -14,22 +14,33 @@ export function AuthPages() {
     email: "",
     password: ""
   });
-  const { login } = useAuth();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { login, signup, authError } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
   const from = location.state?.from?.pathname || "/dashboard";
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // For demo purposes, if it's login and name is empty, we use a default or extract from email
-    const displayName = formData.name || formData.email.split('@')[0].charAt(0).toUpperCase() + formData.email.split('@')[0].slice(1);
-    login({
-      name: displayName,
-      email: formData.email,
-      role: role
-    });
-    navigate(from, { replace: true });
+    setIsSubmitting(true);
+    try {
+      if (isLogin) {
+        await login({ email: formData.email, password: formData.password });
+      } else {
+        await signup({
+          name: formData.name,
+          email: formData.email,
+          password: formData.password,
+          role,
+        });
+      }
+      navigate(from, { replace: true });
+    } catch {
+      // authError is set by the context; do not navigate
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -215,10 +226,16 @@ export function AuthPages() {
                   </div>
                 </div>
 
-                <Button type="submit" className="h-12 w-full shadow-lg shadow-indigo-500/20">
-                  {isLogin ? "Sign In" : "Create Account"}
-                  <ArrowRight className="ml-2 h-5 w-5" />
+                <Button type="submit" className="h-12 w-full shadow-lg shadow-indigo-500/20" disabled={isSubmitting}>
+                  {isSubmitting ? "Please wait…" : (isLogin ? "Sign In" : "Create Account")}
+                  {!isSubmitting && <ArrowRight className="ml-2 h-5 w-5" />}
                 </Button>
+
+                {authError && (
+                  <p className="mt-3 rounded-lg bg-red-500/10 px-4 py-2 text-center text-sm text-red-400">
+                    {authError}
+                  </p>
+                )}
               </form>
 
               <div className="mt-8 text-center">
