@@ -154,6 +154,79 @@ def get_loan(
     return _loan_to_response(loan)
 
 
+@router.get("/{loan_id}/offers", response_model=List[dict])
+def get_loan_offers(
+    loan_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get all offers for a specific loan."""
+    from app.models.offer import Offer
+
+    loan = db.query(Loan).filter(Loan.id == loan_id).first()
+    if not loan:
+        raise HTTPException(status_code=404, detail="Loan not found")
+
+    if current_user.role == "borrower" and str(loan.borrower_id) != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    offers = db.query(Offer).filter(Offer.loan_id == loan_id).all()
+    return [
+        {
+            "id": str(o.id),
+            "loan_id": str(o.loan_id),
+            "lender_id": str(o.lender_id),
+            "interest_rate": float(o.interest_rate),
+            "offered_amount": float(o.offered_amount),
+            "tenure_months": o.tenure_months,
+            "emi_amount": float(o.emi_amount),
+            "status": o.status,
+            "accepted_at": o.accepted_at.isoformat() if o.accepted_at else None,
+            "expires_at": o.expires_at.isoformat(),
+            "created_at": o.created_at.isoformat(),
+        }
+        for o in offers
+    ]
+
+
+@router.patch("/{loan_id}/offers/{offer_id}/accept", response_model=dict)
+def accept_offer_patch(
+    loan_id: str,
+    offer_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("borrower")),
+):
+    """Accept a specific offer for a loan (PATCH variant)."""
+    from app.models.offer import Offer
+
+    loan = db.query(Loan).filter(Loan.id == loan_id, Loan.borrower_id == current_user.id).first()
+    if not loan:
+        raise HTTPException(status_code=404, detail="Loan not found")
+    if loan.status != "offers_received":
+        raise HTTPException(status_code=400, detail="No offers available to accept")
+
+    offer = db.query(Offer).filter(Offer.id == offer_id, Offer.loan_id == loan_id, Offer.status == "pending").first()
+    if not offer:
+        raise HTTPException(status_code=404, detail="Offer not found or already processed")
+
+    db.query(Offer).filter(Offer.loan_id == loan_id, Offer.id != offer_id).update({"status": "rejected"})
+
+    offer.status = "accepted"
+    offer.accepted_at = datetime.utcnow()
+    loan.status = "accepted"
+    loan.approved_amount = offer.offered_amount
+    loan.approved_rate = offer.interest_rate
+    loan.emi_amount = offer.emi_amount
+
+    db.commit()
+    return {
+        "loan_id": str(loan.id),
+        "status": loan.status,
+        "disbursement_scheduled": True,
+        "offer_id": str(offer.id),
+    }
+
+
 @router.post("/{loan_id}/accept-offer/{offer_id}", response_model=dict)
 def accept_offer(
     loan_id: str,

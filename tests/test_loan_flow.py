@@ -345,3 +345,88 @@ class TestListOffers:
 
         response = lender_client.get(f"/offers?loan_id={loan.id}")
         assert response.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# GET /loans/{loan_id}/offers  (nested route)
+# ---------------------------------------------------------------------------
+
+class TestGetLoanOffersNested:
+    def test_borrower_can_get_own_loan_offers(self, borrower_client, mock_db, borrower):
+        loan = _make_loan(status="offers_received", borrower_id=borrower.id)
+        offers = [_make_offer(loan.id, uuid.uuid4()) for _ in range(2)]
+
+        mock_db.query.return_value.filter.return_value.first.return_value = loan
+        mock_db.query.return_value.filter.return_value.all.return_value = offers
+
+        response = borrower_client.get(f"/loans/{loan.id}/offers")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 2
+        assert "interest_rate" in data[0]
+        assert "offered_amount" in data[0]
+
+    def test_borrower_cannot_get_other_loan_offers(self, borrower_client, mock_db):
+        loan = _make_loan(status="offers_received")  # different borrower_id
+        mock_db.query.return_value.filter.return_value.first.return_value = loan
+
+        response = borrower_client.get(f"/loans/{loan.id}/offers")
+        assert response.status_code == 403
+
+    def test_nonexistent_loan_returns_404(self, borrower_client, mock_db):
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+        response = borrower_client.get(f"/loans/{uuid.uuid4()}/offers")
+        assert response.status_code == 404
+
+    def test_lender_can_get_any_loan_offers(self, lender_client, mock_db):
+        loan = _make_loan(status="offers_received")
+        offers = [_make_offer(loan.id, uuid.uuid4())]
+        mock_db.query.return_value.filter.return_value.first.return_value = loan
+        mock_db.query.return_value.filter.return_value.all.return_value = offers
+
+        response = lender_client.get(f"/loans/{loan.id}/offers")
+        assert response.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# PATCH /loans/{loan_id}/offers/{offer_id}/accept
+# ---------------------------------------------------------------------------
+
+class TestPatchAcceptOffer:
+    def test_borrower_can_accept_offer_via_patch(self, borrower_client, mock_db, borrower):
+        loan = _make_loan(status="offers_received", borrower_id=borrower.id)
+        offer = _make_offer(loan.id, uuid.uuid4(), status="pending")
+
+        mock_db.query.return_value.filter.return_value.first.side_effect = [loan, offer]
+        mock_db.query.return_value.filter.return_value.update.return_value = 0
+
+        response = borrower_client.patch(f"/loans/{loan.id}/offers/{offer.id}/accept")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["loan_id"] == str(loan.id)
+        assert data["status"] == "accepted"
+        assert "offer_id" in data
+
+    def test_patch_accept_loan_not_found_returns_404(self, borrower_client, mock_db, borrower):
+        mock_db.query.return_value.filter.return_value.first.return_value = None
+        response = borrower_client.patch(f"/loans/{uuid.uuid4()}/offers/{uuid.uuid4()}/accept")
+        assert response.status_code == 404
+
+    def test_patch_accept_wrong_status_returns_400(self, borrower_client, mock_db, borrower):
+        loan = _make_loan(status="submitted", borrower_id=borrower.id)
+        mock_db.query.return_value.filter.return_value.first.return_value = loan
+
+        response = borrower_client.patch(f"/loans/{loan.id}/offers/{uuid.uuid4()}/accept")
+        assert response.status_code == 400
+
+    def test_patch_accept_offer_not_found_returns_404(self, borrower_client, mock_db, borrower):
+        loan = _make_loan(status="offers_received", borrower_id=borrower.id)
+        mock_db.query.return_value.filter.return_value.first.side_effect = [loan, None]
+        mock_db.query.return_value.filter.return_value.update.return_value = 0
+
+        response = borrower_client.patch(f"/loans/{loan.id}/offers/{uuid.uuid4()}/accept")
+        assert response.status_code == 404
+
+    def test_lender_cannot_patch_accept_offer(self, lender_client, mock_db):
+        response = lender_client.patch(f"/loans/{uuid.uuid4()}/offers/{uuid.uuid4()}/accept")
+        assert response.status_code == 403

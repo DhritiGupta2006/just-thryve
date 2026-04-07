@@ -319,6 +319,14 @@ export const loansApi = {
     return request(`/loans/${loanId}/accept-offer/${offerId}`, { method: "POST" });
   },
 
+  getOffers(loanId: string): Promise<OfferResponse[]> {
+    return request<OfferResponse[]>(`/loans/${loanId}/offers`);
+  },
+
+  patchAcceptOffer(loanId: string, offerId: string): Promise<Record<string, unknown>> {
+    return request(`/loans/${loanId}/offers/${offerId}/accept`, { method: "PATCH" });
+  },
+
   disburse(loanId: string): Promise<Record<string, unknown>> {
     return request(`/loans/${loanId}/disburse`, { method: "POST" });
   },
