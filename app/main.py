@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import get_settings
-from app.routers.auth import router as auth_router
+from app.routers.auth import router as auth_router, profile_router
 from app.routers.loans import router as loans_router
 from app.routers.consent import router as consent_router
 from app.routers.offers import router as offers_router
@@ -74,6 +74,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # Mount routers
 app.include_router(auth_router)
+app.include_router(profile_router)
 app.include_router(loans_router)
 app.include_router(consent_router)
 app.include_router(offers_router)

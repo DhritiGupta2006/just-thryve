@@ -11,11 +11,11 @@ import {
   Zap,
   ShieldCheck,
   X,
-  File,
   Loader2
 } from "lucide-react";
 import { Card, Button, Badge } from "../components/UI";
 import { cn } from "../lib/utils";
+import { loansApi, ApiError } from "../services/api";
 
 const STEPS = [
   { id: 1, title: "Business Details", icon: Building2 },
@@ -30,8 +30,12 @@ export function LoanApplication() {
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [companySize, setCompanySize] = useState("");
   const [annualRevenue, setAnnualRevenue] = useState("");
+  const [loanAmount, setLoanAmount] = useState("");
+  const [loanPurpose, setLoanPurpose] = useState("Business Expansion");
+  const [tenureMonths, setTenureMonths] = useState("12");
   const [uploadedFiles, setUploadedFiles] = useState<{ id: string; name: string; size: string; progress: number; status: 'uploading' | 'completed' | 'error' }[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
@@ -76,13 +80,30 @@ export function LoanApplication() {
   const nextStep = () => setCurrentStep(prev => Math.min(prev + 1, STEPS.length));
   const prevStep = () => setCurrentStep(prev => Math.max(prev - 1, 1));
 
-  const handleSubmit = () => {
-    console.log("New ESG Factors:", { companySize, annualRevenue });
+  const handleSubmit = async () => {
+    const rawAmount = loanAmount.replace(/,/g, '').trim();
+    const amount = parseFloat(rawAmount);
+    if (!rawAmount || isNaN(amount) || amount <= 0) {
+      setSubmitError("Please enter a valid loan amount.");
+      return;
+    }
     setIsSubmitting(true);
-    setTimeout(() => {
-      setIsSubmitting(false);
+    setSubmitError(null);
+    try {
+      const { loan_id } = await loansApi.apply({
+        amount_requested: amount,
+        purpose: loanPurpose || "Business Expansion",
+        tenure_months: parseInt(tenureMonths) || 12,
+      });
+      await loansApi.submit(loan_id);
       setIsSuccess(true);
-    }, 2000);
+      setTimeout(() => navigate(`/dashboard/offers?loanId=${loan_id}`), 2000);
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.detail : (err instanceof Error ? err.message : "Submission failed. Please try again.");
+      setSubmitError(msg);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (isSuccess) {
@@ -98,7 +119,7 @@ export function LoanApplication() {
         <h2 className="mb-2 text-3xl font-bold text-slate-soft">Application Submitted!</h2>
         <p className="mb-8 max-w-md text-slate-muted">
           Your loan application is being processed by our AI underwriting engine. 
-          We'll notify you as soon as lender offers are available.
+          Redirecting to your offers…
         </p>
         <Button onClick={() => navigate("/dashboard")}>Back to Dashboard</Button>
       </div>
@@ -194,11 +215,44 @@ export function LoanApplication() {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-xs font-bold uppercase tracking-widest text-slate-muted">Requested Loan Amount</label>
+                    <label className="text-xs font-bold uppercase tracking-widest text-slate-muted">Requested Loan Amount (₹)</label>
                     <div className="relative">
                       <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-muted">₹</span>
-                      <input type="text" className="w-full rounded-2xl bg-white/5 p-4 pl-8 text-slate-soft outline-none ring-1 ring-white/10 focus:ring-indigo-primary/50 transition-all" placeholder="25,00,000" />
+                      <input
+                        type="text"
+                        className="w-full rounded-2xl bg-white/5 p-4 pl-8 text-slate-soft outline-none ring-1 ring-white/10 focus:ring-indigo-primary/50 transition-all"
+                        placeholder="25,00,000"
+                        value={loanAmount}
+                        onChange={(e) => setLoanAmount(e.target.value)}
+                      />
                     </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-6 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold uppercase tracking-widest text-slate-muted">Loan Purpose</label>
+                    <input
+                      type="text"
+                      className="w-full rounded-2xl bg-white/5 p-4 text-slate-soft outline-none ring-1 ring-white/10 focus:ring-indigo-primary/50 transition-all"
+                      placeholder="Business Expansion"
+                      value={loanPurpose}
+                      onChange={(e) => setLoanPurpose(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold uppercase tracking-widest text-slate-muted">Tenure (Months)</label>
+                    <select
+                      className="w-full rounded-2xl bg-navy-deep p-4 text-slate-soft outline-none ring-1 ring-white/10 focus:ring-indigo-primary/50 transition-all"
+                      value={tenureMonths}
+                      onChange={(e) => setTenureMonths(e.target.value)}
+                    >
+                      <option value="6">6 months</option>
+                      <option value="12">12 months</option>
+                      <option value="18">18 months</option>
+                      <option value="24">24 months</option>
+                      <option value="36">36 months</option>
+                    </select>
                   </div>
                 </div>
 
@@ -386,7 +440,11 @@ export function LoanApplication() {
           </motion.div>
         </AnimatePresence>
 
-        <div className="mt-12 flex justify-between">
+        <div className="mt-12 flex flex-col gap-3">
+          {submitError && (
+            <p className="text-sm text-red-400 text-center">{submitError}</p>
+          )}
+          <div className="flex justify-between">
           <Button 
             variant="ghost" 
             onClick={prevStep} 
@@ -410,6 +468,7 @@ export function LoanApplication() {
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           )}
+          </div>
         </div>
       </Card>
     </div>

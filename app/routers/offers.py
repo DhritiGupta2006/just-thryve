@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -29,6 +29,41 @@ def _offer_to_response(offer: Offer) -> OfferResponse:
         expires_at=offer.expires_at,
         created_at=offer.created_at,
     )
+
+
+@router.patch("/{offer_id}/accept", response_model=dict)
+def accept_offer(
+    offer_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("borrower")),
+):
+    """Accept a specific offer directly by offer ID (borrower only)."""
+    offer = db.query(Offer).filter(Offer.id == offer_id, Offer.status == "pending").first()
+    if not offer:
+        raise HTTPException(status_code=404, detail="Offer not found or already processed")
+
+    loan = db.query(Loan).filter(Loan.id == offer.loan_id, Loan.borrower_id == current_user.id).first()
+    if not loan:
+        raise HTTPException(status_code=403, detail="Access denied")
+    if loan.status != "offers_received":
+        raise HTTPException(status_code=400, detail="No offers available to accept")
+
+    # Reject all other pending offers for this loan
+    db.query(Offer).filter(Offer.loan_id == offer.loan_id, Offer.id != offer_id).update({"status": "rejected"})
+
+    offer.status = "accepted"
+    offer.accepted_at = datetime.now(timezone.utc)
+    loan.status = "accepted"
+    loan.approved_amount = offer.offered_amount
+    loan.approved_rate = offer.interest_rate
+    loan.emi_amount = offer.emi_amount
+
+    db.commit()
+    return {
+        "offer_id": str(offer.id),
+        "status": "accepted",
+        "message": "Offer accepted successfully",
+    }
 
 
 @router.get("", response_model=List[OfferResponse])
