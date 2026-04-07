@@ -199,6 +199,63 @@ export interface ConsentGrantPayload {
   consent_types: string[];
 }
 
+export interface ESGMetricsResponse {
+  renewable_energy_percent: number;
+  carbon_intensity: number;
+  compliance_score: number;
+  waste_recycled_percent: number;
+  social_impact_score: number;
+}
+
+export interface LoanSummary {
+  loan_id: string;
+  status: string;
+  amount_requested: number;
+  approved_amount?: number;
+  emi_amount?: number;
+  risk_score?: number;
+  ml_decision?: string;
+  created_at: string;
+}
+
+export interface OfferSummary {
+  offer_id: string;
+  loan_id: string;
+  status: string;
+  offered_amount: number;
+  interest_rate: number;
+  tenure_months: number;
+  emi_amount: number;
+  created_at: string;
+}
+
+export interface BorrowerDashboardResponse {
+  loan_count: number;
+  active_loan_count: number;
+  total_requested: number;
+  total_approved: number;
+  total_repaid: number;
+  next_emi_date?: string;
+  next_emi_amount?: number;
+  loans: LoanSummary[];
+}
+
+export interface LenderDashboardResponse {
+  offer_count: number;
+  accepted_offer_count: number;
+  portfolio_value: number;
+  average_interest_rate?: number;
+  offers: OfferSummary[];
+}
+
+export interface NotificationItem {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  created_at: string;
+}
+
 // ---------------------------------------------------------------------------
 // Auth endpoints
 // ---------------------------------------------------------------------------
@@ -340,5 +397,39 @@ export const auditLogsApi = {
 
   get(logId: string): Promise<AuditLogEntry> {
     return request<AuditLogEntry>(`/audit-logs/${logId}`);
+  },
+};
+
+// ---------------------------------------------------------------------------
+// ESG endpoints
+// ---------------------------------------------------------------------------
+
+export const esgApi = {
+  metrics(): Promise<ESGMetricsResponse> {
+    return request<ESGMetricsResponse>("/esg/metrics");
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Dashboard endpoints
+// ---------------------------------------------------------------------------
+
+export const dashboardApi = {
+  borrower(): Promise<BorrowerDashboardResponse> {
+    return request<BorrowerDashboardResponse>("/dashboard/borrower");
+  },
+
+  lender(): Promise<LenderDashboardResponse> {
+    return request<LenderDashboardResponse>("/dashboard/lender");
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Notifications endpoints
+// ---------------------------------------------------------------------------
+
+export const notificationsApi = {
+  list(): Promise<NotificationItem[]> {
+    return request<NotificationItem[]>("/notifications");
   },
 };
