@@ -1,4 +1,4 @@
-# GreenFlowCredit — OCEN-based Green Business Lending Platform
+# JUST THRYVE — OCEN-based Green Business Lending Platform
 
 A production-ready full-stack fintech platform built with **FastAPI**, **PostgreSQL**, **XGBoost ML**, and Account Aggregator (AA) consent simulation. Designed for green businesses in renewable energy, sustainable agriculture, and eco-commerce.
 
