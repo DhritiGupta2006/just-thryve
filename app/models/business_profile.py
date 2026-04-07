@@ -19,6 +19,8 @@ class BusinessProfile(Base):
     renewable_mix_percent = Column(Integer, default=0, nullable=False)
     carbon_emissions_tons = Column(Numeric(10, 4), nullable=True)
     compliance_status = Column(String, default="pending", nullable=False)  # compliant, pending, non_compliant
+    waste_recycled_percent = Column(Numeric(5, 2), default=0, nullable=False)
+    social_impact_score = Column(Numeric(5, 2), default=0, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     user = relationship("User", back_populates="business_profiles")

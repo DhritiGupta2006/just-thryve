@@ -11,6 +11,8 @@ def _make_profile(
     renewable_mix_percent: int = 65,
     carbon_emissions_tons=12.4,
     compliance_status: str = "compliant",
+    waste_recycled_percent=45.0,
+    social_impact_score=88.0,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         id=uuid.uuid4(),
@@ -20,6 +22,8 @@ def _make_profile(
         renewable_mix_percent=renewable_mix_percent,
         carbon_emissions_tons=carbon_emissions_tons,
         compliance_status=compliance_status,
+        waste_recycled_percent=waste_recycled_percent,
+        social_impact_score=social_impact_score,
     )
 
 

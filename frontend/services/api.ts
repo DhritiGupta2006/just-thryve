@@ -416,6 +416,10 @@ export const esgApi = {
   metrics(): Promise<ESGMetricsResponse> {
     return request<ESGMetricsResponse>("/esg/metrics");
   },
+
+  updateMetrics(payload: Partial<ESGMetricsResponse>): Promise<ESGMetricsResponse> {
+    return request<ESGMetricsResponse>("/esg/metrics", { method: "PUT", body: payload });
+  },
 };
 
 // ---------------------------------------------------------------------------

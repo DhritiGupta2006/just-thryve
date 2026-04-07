@@ -17,14 +17,32 @@ import {
 import { useAuth } from "../context/AuthContext";
 import { useESG } from "../context/ESGContext";
 import { Card, Button, Badge } from "../components/UI";
+import { authApi } from "../services/api";
 import { cn } from "../lib/utils";
 
 export function ProfilePage() {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const { score: ecsScore } = useESG();
   const [activeTab, setActiveTab] = useState<'profile' | 'security' | 'notifications'>('profile');
   const [logo, setLogo] = useState<string | null>(null);
+  const [name, setName] = useState(user?.name ?? "");
+  const [businessName, setBusinessName] = useState(user?.businessName ?? "");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await authApi.updateProfile({ name, business_name: businessName });
+      await refreshUser();
+    } catch (err: any) {
+      setSaveError(err?.message ?? "Failed to save changes");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -85,9 +103,14 @@ export function ProfilePage() {
         </div>
         <div className="flex gap-3">
           <Button variant="outline" size="sm">Edit Profile</Button>
-          <Button size="sm">Save Changes</Button>
+          <Button size="sm" onClick={handleSave} disabled={saving}>
+            {saving ? "Saving…" : "Save Changes"}
+          </Button>
         </div>
       </div>
+      {saveError && (
+        <p className="text-sm text-red-400">{saveError}</p>
+      )}
 
       <div className="flex gap-1 p-1 rounded-2xl bg-white/5 w-fit">
         {tabs.map((tab) => (
@@ -127,7 +150,8 @@ export function ProfilePage() {
                         <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-muted" />
                         <input 
                           type="text" 
-                          defaultValue={user?.businessName}
+                          value={businessName}
+                          onChange={(e) => setBusinessName(e.target.value)}
                           className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-slate-soft outline-none focus:ring-1 focus:ring-indigo-primary/50"
                         />
                       </div>
@@ -139,7 +163,8 @@ export function ProfilePage() {
                         <input 
                           type="email" 
                           defaultValue={user?.email}
-                          className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-slate-soft outline-none focus:ring-1 focus:ring-indigo-primary/50"
+                          readOnly
+                          className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-slate-soft outline-none focus:ring-1 focus:ring-indigo-primary/50 opacity-60 cursor-not-allowed"
                         />
                       </div>
                     </div>

@@ -1,14 +1,12 @@
+import { useState, useEffect } from "react";
 import { motion } from "motion/react";
 import { 
   Leaf, 
   Wind, 
-  Droplets, 
   Recycle, 
   Users, 
   ShieldCheck,
-  ArrowUpRight,
   TrendingUp,
-  AlertCircle
 } from "lucide-react";
 import { 
   BarChart, 
@@ -18,18 +16,10 @@ import {
   CartesianGrid, 
   Tooltip, 
   ResponsiveContainer,
-  Cell
 } from "recharts";
 import { Card, Badge, Button } from "../components/UI";
-import { MOCK_ESG_METRICS } from "../data/mockData";
+import { esgApi, ESGMetricsResponse } from "../services/api";
 import { cn } from "../lib/utils";
-
-const ESG_DETAILS = [
-  { label: "Renewable Energy", value: MOCK_ESG_METRICS.renewableEnergyPercent, icon: Wind, color: "text-indigo-primary", bg: "bg-indigo-primary/10", unit: "%" },
-  { label: "Carbon Intensity", value: MOCK_ESG_METRICS.carbonIntensity, icon: Leaf, color: "text-cyan-accent", bg: "bg-cyan-accent/10", unit: "tCO2e" },
-  { label: "Waste Recycled", value: MOCK_ESG_METRICS.wasteRecycledPercent, icon: Recycle, color: "text-indigo-primary", bg: "bg-indigo-primary/10", unit: "%" },
-  { label: "Social Impact", value: MOCK_ESG_METRICS.socialImpactScore, icon: Users, color: "text-cyan-accent", bg: "bg-cyan-accent/10", unit: "/100" },
-];
 
 const BENCHMARK_DATA = [
   { category: "Energy", yourScore: 85, industryAvg: 45 },
@@ -39,6 +29,30 @@ const BENCHMARK_DATA = [
 ];
 
 export function ESGInsights() {
+  const [metrics, setMetrics] = useState<ESGMetricsResponse | null>(null);
+
+  useEffect(() => {
+    esgApi.metrics().then(setMetrics).catch(() => {
+      // Fall back to zeros on error so page still renders
+      setMetrics({
+        renewable_energy_percent: 0,
+        carbon_intensity: 0,
+        compliance_score: 0,
+        waste_recycled_percent: 0,
+        social_impact_score: 0,
+      });
+    });
+  }, []);
+
+  const ESG_DETAILS = metrics
+    ? [
+        { label: "Renewable Energy", value: metrics.renewable_energy_percent, icon: Wind, color: "text-indigo-primary", bg: "bg-indigo-primary/10", unit: "%" },
+        { label: "Carbon Intensity", value: metrics.carbon_intensity, icon: Leaf, color: "text-cyan-accent", bg: "bg-cyan-accent/10", unit: "tCO2e" },
+        { label: "Waste Recycled", value: metrics.waste_recycled_percent, icon: Recycle, color: "text-indigo-primary", bg: "bg-indigo-primary/10", unit: "%" },
+        { label: "Social Impact", value: metrics.social_impact_score, icon: Users, color: "text-cyan-accent", bg: "bg-cyan-accent/10", unit: "/100" },
+      ]
+    : [];
+
   return (
     <div className="space-y-8">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">

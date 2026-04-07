@@ -14,6 +14,7 @@ interface AuthContextType {
     sector?: string;
   }) => Promise<void>;
   logout: () => void;
+  refreshUser: () => Promise<void>;
   isAuthenticated: boolean;
   authError: string | null;
 }
@@ -129,8 +130,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAuthError(null);
   };
 
+  const refreshUser = async () => {
+    const profile = await authApi.me();
+    const u: User = {
+      id: profile.user_id,
+      name: profile.name,
+      email: profile.email,
+      role: profile.role.toUpperCase() as 'BORROWER' | 'LENDER',
+    };
+    setUser(u);
+    localStorage.setItem(USER_KEY, JSON.stringify(u));
+  };
+
   return (
-    <AuthContext.Provider value={{ user, login, signup, logout, isAuthenticated: !!user, authError }}>
+    <AuthContext.Provider value={{ user, login, signup, logout, refreshUser, isAuthenticated: !!user, authError }}>
       {children}
     </AuthContext.Provider>
   );
