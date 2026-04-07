@@ -7,6 +7,8 @@ import {
   Users, 
   ShieldCheck,
   TrendingUp,
+  CheckCircle2,
+  Loader2,
 } from "lucide-react";
 import { 
   BarChart, 
@@ -30,10 +32,24 @@ const BENCHMARK_DATA = [
 
 export function ESGInsights() {
   const [metrics, setMetrics] = useState<ESGMetricsResponse | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Form state mirrors the current metric values
+  const [renewableEnergy, setRenewableEnergy] = useState<string>("");
+  const [carbonIntensity, setCarbonIntensity] = useState<string>("");
+  const [wasteRecycled, setWasteRecycled] = useState<string>("");
+  const [socialImpact, setSocialImpact] = useState<string>("");
 
   useEffect(() => {
-    esgApi.metrics().then(setMetrics).catch(() => {
-      // Fall back to zeros on error so page still renders
+    esgApi.metrics().then((data) => {
+      setMetrics(data);
+      setRenewableEnergy(String(data.renewable_energy_percent));
+      setCarbonIntensity(String(data.carbon_intensity));
+      setWasteRecycled(String(data.waste_recycled_percent));
+      setSocialImpact(String(data.social_impact_score));
+    }).catch(() => {
       setMetrics({
         renewable_energy_percent: 0,
         carbon_intensity: 0,
@@ -43,6 +59,27 @@ export function ESGInsights() {
       });
     });
   }, []);
+
+  const handleUpdate = async () => {
+    setSaving(true);
+    setSaveError(null);
+    setSaveSuccess(false);
+    try {
+      const updated = await esgApi.updateMetrics({
+        renewable_energy_percent: parseFloat(renewableEnergy) || 0,
+        carbon_intensity: parseFloat(carbonIntensity) || 0,
+        waste_recycled_percent: parseFloat(wasteRecycled) || 0,
+        social_impact_score: parseFloat(socialImpact) || 0,
+      });
+      setMetrics(updated);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (err: any) {
+      setSaveError(err?.message ?? "Failed to save ESG metrics");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const ESG_DETAILS = metrics
     ? [
@@ -83,6 +120,77 @@ export function ESGInsights() {
           </Card>
         ))}
       </div>
+
+      {/* Update Form */}
+      <Card>
+        <h3 className="mb-6 text-lg font-bold text-slate-soft">Update ESG Metrics</h3>
+        <div className="grid gap-6 sm:grid-cols-2">
+          <div className="space-y-2">
+            <label className="text-xs font-medium uppercase tracking-wider text-slate-muted">Renewable Energy (%)</label>
+            <input
+              type="number"
+              min="0"
+              max="100"
+              value={renewableEnergy}
+              onChange={(e) => setRenewableEnergy(e.target.value)}
+              className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-slate-soft outline-none focus:ring-1 focus:ring-indigo-primary/50"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs font-medium uppercase tracking-wider text-slate-muted">Carbon Intensity (tCO2e)</label>
+            <input
+              type="number"
+              min="0"
+              step="0.1"
+              value={carbonIntensity}
+              onChange={(e) => setCarbonIntensity(e.target.value)}
+              className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-slate-soft outline-none focus:ring-1 focus:ring-indigo-primary/50"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs font-medium uppercase tracking-wider text-slate-muted">Waste Recycled (%)</label>
+            <input
+              type="number"
+              min="0"
+              max="100"
+              value={wasteRecycled}
+              onChange={(e) => setWasteRecycled(e.target.value)}
+              className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-slate-soft outline-none focus:ring-1 focus:ring-indigo-primary/50"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs font-medium uppercase tracking-wider text-slate-muted">Social Impact Score (/100)</label>
+            <input
+              type="number"
+              min="0"
+              max="100"
+              value={socialImpact}
+              onChange={(e) => setSocialImpact(e.target.value)}
+              className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-slate-soft outline-none focus:ring-1 focus:ring-indigo-primary/50"
+            />
+          </div>
+        </div>
+        <div className="mt-6 flex items-center gap-4">
+          <Button onClick={handleUpdate} disabled={saving}>
+            {saving ? (
+              <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving…</>
+            ) : (
+              "Save Metrics"
+            )}
+          </Button>
+          {saveSuccess && (
+            <motion.div
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="flex items-center gap-2 text-sm text-green-400"
+            >
+              <CheckCircle2 className="h-4 w-4" />
+              Metrics updated successfully
+            </motion.div>
+          )}
+          {saveError && <p className="text-sm text-red-400">{saveError}</p>}
+        </div>
+      </Card>
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Industry Benchmark */}

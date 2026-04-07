@@ -9,6 +9,8 @@ from app.services.auth_service import AuthService, get_current_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+profile_router = APIRouter(prefix="/profile", tags=["profile"])
+
 VALID_ROLES = {"borrower", "lender"}
 VALID_SECTORS = {"renewable_energy", "agriculture", "commerce"}
 
@@ -137,3 +139,59 @@ def verify_kyc(
         created_at=current_user.created_at,
     )
 
+
+# ---------------------------------------------------------------------------
+# /profile/* aliases — identical to /auth/me and /auth/profile
+# ---------------------------------------------------------------------------
+
+@profile_router.get("/me", response_model=UserResponse)
+def profile_me(current_user: User = Depends(get_current_user)):
+    """Alias for GET /auth/me — returns the authenticated user's profile."""
+    return UserResponse(
+        user_id=str(current_user.id),
+        email=current_user.email,
+        name=current_user.name,
+        role=current_user.role,
+        kyc_verified=current_user.kyc_verified,
+        created_at=current_user.created_at,
+    )
+
+
+@profile_router.put("/me", response_model=UserResponse)
+def update_profile_me(
+    payload: ProfileUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Alias for PUT /auth/profile — updates name, business_name, sector."""
+    if payload.name is not None:
+        current_user.name = payload.name
+
+    if payload.business_name is not None or payload.sector is not None:
+        bp = (
+            db.query(BusinessProfile)
+            .filter(BusinessProfile.user_id == current_user.id)
+            .first()
+        )
+        if bp:
+            if payload.business_name is not None:
+                bp.business_name = payload.business_name
+            if payload.sector is not None:
+                if payload.sector not in VALID_SECTORS:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"sector must be one of {VALID_SECTORS}",
+                    )
+                bp.sector = payload.sector
+
+    db.commit()
+    db.refresh(current_user)
+
+    return UserResponse(
+        user_id=str(current_user.id),
+        email=current_user.email,
+        name=current_user.name,
+        role=current_user.role,
+        kyc_verified=current_user.kyc_verified,
+        created_at=current_user.created_at,
+    )
